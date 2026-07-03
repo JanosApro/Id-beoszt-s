@@ -52,7 +52,7 @@
   button:hover { background: #f0efe9; }
   button.active { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
   .tabbar button { flex: 1; }
-  input[type=text], input[type=date] {
+  input[type=text], input[type=datetime-local] {
     font-family: inherit;
     font-size: 14px;
     padding: 8px 10px;
@@ -141,11 +141,11 @@
   <div class="card" id="team-card" style="display:none;">
     <div class="dates-row">
       <label for="next-scrim">Következő scrim:</label>
-      <input type="date" id="next-scrim" />
+      <input type="datetime-local" id="next-scrim" />
     </div>
     <div class="dates-row">
       <label for="next-match">Következő meccs:</label>
-      <input type="date" id="next-match" />
+      <input type="datetime-local" id="next-match" />
     </div>
 
     <div class="section-label">Csapattagok</div>
