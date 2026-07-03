@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hu">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Team Availability</title>
+<title>Csapat elérhetőség</title>
 <style>
   :root {
     --bg: #f5f4f0;
@@ -28,7 +28,7 @@
     color: var(--text-primary);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   }
-  .wrap { max-width: 720px; margin: 0 auto; }
+  .wrap { max-width: 760px; margin: 0 auto; }
   h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
   .sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 1.5rem; }
   .card {
@@ -62,11 +62,13 @@
   }
   .who-bar { display: flex; gap: 8px; margin-bottom: 1rem; }
   .user-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 0.75rem; }
-  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 0.75rem; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 1rem; }
   .legend i { font-style: normal; font-weight: 600; }
-  table { border-collapse: collapse; width: 100%; }
+  .week-title { font-size: 14px; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+  .week-title:first-of-type { margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 0.5rem; }
   th, td { border: 1px solid var(--border); text-align: center; font-size: 12px; }
-  th { color: var(--text-secondary); font-weight: 500; padding: 4px 2px; }
+  th { color: var(--text-secondary); font-weight: 500; padding: 4px 2px; line-height: 1.3; }
   td.hour-label { color: var(--text-secondary); text-align: right; padding: 2px 8px 2px 0; border: none; white-space: nowrap; }
   td.cell { height: 28px; width: 13%; cursor: pointer; user-select: none; }
   td.cell.readonly { cursor: default; }
@@ -88,26 +90,26 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Team availability</h1>
-  <p class="sub">Mark your available hours. Everyone shares this list on this device/browser.</p>
+  <h1>Csapat elérhetőség</h1>
+  <p class="sub">Jelöld be, mikor érsz rá. Amikor elkezdődik a jövő hét, az automatikusan átkerül "ez a hét" alá, és egy új, üres jövő hét jelenik meg.</p>
 
   <div class="tabbar">
-    <button id="tab-mine" class="active">My schedule</button>
-    <button id="tab-team">Team view</button>
+    <button id="tab-mine" class="active">Saját beosztás</button>
+    <button id="tab-team">Csapat nézet</button>
   </div>
 
   <div class="card">
     <div class="who-bar" id="who-bar">
-      <input type="text" id="name-input" list="member-list" placeholder="Enter your name" />
+      <input type="text" id="name-input" list="member-list" placeholder="Felhasználónév" />
       <datalist id="member-list"></datalist>
-      <button id="load-btn">Open</button>
+      <button id="load-btn">Megnyitás</button>
     </div>
 
     <div class="user-label" id="user-label" style="display:none;"></div>
     <div class="legend" id="legend" style="display:none;">
-      <span><i>&check;</i> available</span>
-      <span><i>&times;</i> unavailable</span>
-      <span>&mdash; unset</span>
+      <span><i>&check;</i> elérhető</span>
+      <span><i>&times;</i> nem elérhető</span>
+      <span>&mdash; nincs megadva</span>
     </div>
 
     <div class="member-pills" id="member-pills" style="display:none;"></div>
@@ -115,17 +117,17 @@
   </div>
 
   <p class="storage-note">
-    Data is stored in this browser's local storage, so it's shared for everyone using this exact
-    browser/computer, but it will not sync to other people's devices automatically. To keep a team
-    in sync across separate computers, host this file somewhere everyone opens on the same shared
-    kiosk/computer, or ask me to wire it up to a small free backend (e.g. Firebase) for real
-    cross-device syncing.
+    Az adatok ennek a böngészőnek a helyi tárolójában (local storage) vannak, tehát mindenki
+    számára közösek, aki ugyanazt a böngészőt/gépet használja, de nem szinkronizálódnak
+    automatikusan más eszközök között. Ha a csapat különböző gépeken szeretné valódi,
+    eszközök közötti szinkronban használni, szólj, és beállítok hozzá egy egyszerű, ingyenes
+    háttérrendszert (pl. Firebase).
   </p>
 </div>
 
 <script>
 (function () {
-  var DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  var DAY_NAMES = ["H", "K", "Sze", "Cs", "P", "Szo", "V"];
   var HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
   var STATES = ["unset", "available", "unavailable"];
 
@@ -146,7 +148,30 @@
   var memberPillsEl = document.getElementById("member-pills");
   var gridWrap = document.getElementById("grid-wrap");
 
-  function cellKey(day, hour) { return day + "-" + hour; }
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function toISO(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function fmtShort(d) { return pad(d.getMonth() + 1) + "." + pad(d.getDate()) + "."; }
+
+  function getMonday(d) {
+    d = new Date(d);
+    var day = d.getDay();
+    var diff = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function weekDates(monday) {
+    var arr = [];
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      arr.push(d);
+    }
+    return arr;
+  }
+
+  function cellKey(dateISO, hour) { return dateISO + "-" + hour; }
 
   function getMembers() {
     try { return JSON.parse(localStorage.getItem("team:members") || "[]"); }
@@ -173,46 +198,66 @@
     });
   }
 
-  function renderGrid(data, editable) {
-    var html = "<table><tr><th></th>";
-    DAYS.forEach(function (d) { html += "<th>" + d + "</th>"; });
+  function renderWeekTable(monday, label, data, editable) {
+    var dates = weekDates(monday);
+    var lastDate = dates[6];
+    var title = document.createElement("div");
+    title.className = "week-title";
+    title.textContent = label + " (" + fmtShort(monday) + " \u2013 " + fmtShort(lastDate) + ")";
+    gridWrap.appendChild(title);
+
+    var table = document.createElement("table");
+    var html = "<tr><th></th>";
+    dates.forEach(function (d, i) {
+      html += "<th>" + DAY_NAMES[i] + "<br>" + fmtShort(d) + "</th>";
+    });
     html += "</tr>";
     HOURS.forEach(function (h) {
       html += "<tr><td class='hour-label'>" + h + ":00</td>";
-      DAYS.forEach(function (d) {
-        var key = cellKey(d, h);
+      dates.forEach(function (d) {
+        var iso = toISO(d);
+        var key = cellKey(iso, h);
         var state = data[key] || 0;
         var cls = STATES[state];
         var content = state === 1 ? "&check;" : state === 2 ? "&times;" : "&mdash;";
-        html += "<td class='cell " + cls + (editable ? "" : " readonly") + "' data-day='" + d + "' data-hour='" + h + "'>" + content + "</td>";
+        html += "<td class='cell " + cls + (editable ? "" : " readonly") + "' data-date='" + iso + "' data-hour='" + h + "'>" + content + "</td>";
       });
       html += "</tr>";
     });
-    html += "</table>";
-    gridWrap.innerHTML = html;
+    table.innerHTML = html;
+    gridWrap.appendChild(table);
 
     if (editable) {
-      var cells = gridWrap.querySelectorAll("td.cell");
+      var cells = table.querySelectorAll("td.cell");
       cells.forEach(function (cell) {
         cell.addEventListener("click", function () {
-          var day = cell.getAttribute("data-day");
+          var iso = cell.getAttribute("data-date");
           var hour = cell.getAttribute("data-hour");
-          var key = cellKey(day, hour);
+          var key = cellKey(iso, hour);
           var state = currentData[key] || 0;
           state = (state + 1) % 3;
           if (state === 0) delete currentData[key]; else currentData[key] = state;
           saveUserData(currentUser, currentData);
-          renderGrid(currentData, true);
+          renderGrids(currentData, true);
         });
       });
     }
+  }
+
+  function renderGrids(data, editable) {
+    gridWrap.innerHTML = "";
+    var thisMonday = getMonday(new Date());
+    var nextMonday = new Date(thisMonday);
+    nextMonday.setDate(thisMonday.getDate() + 7);
+    renderWeekTable(thisMonday, "Ez a hét", data, editable);
+    renderWeekTable(nextMonday, "Jövő hét", data, editable);
   }
 
   function renderMemberPills() {
     memberPillsEl.innerHTML = "";
     teamMembers = getMembers();
     if (teamMembers.length === 0) {
-      memberPillsEl.innerHTML = "<p class='empty'>No team members yet. Ask everyone to open \"My schedule\" and enter their name.</p>";
+      memberPillsEl.innerHTML = "<p class='empty'>Még nincs csapattag. Kérd meg mindenkit, hogy nyissa meg a \"Saját beosztás\" fület, és adja meg a nevét.</p>";
       gridWrap.innerHTML = "";
       return;
     }
@@ -223,14 +268,14 @@
       btn.addEventListener("click", function () {
         viewingMember = name;
         renderMemberPills();
-        renderGrid(getUserData(name), false);
+        renderGrids(getUserData(name), false);
       });
       memberPillsEl.appendChild(btn);
     });
     if (!viewingMember || teamMembers.indexOf(viewingMember) === -1) {
       viewingMember = teamMembers[0];
     }
-    renderGrid(getUserData(viewingMember), false);
+    renderGrids(getUserData(viewingMember), false);
   }
 
   function showMineView() {
@@ -242,9 +287,9 @@
     if (currentUser) {
       whoBar.style.display = "none";
       userLabel.style.display = "block";
-      userLabel.textContent = "Editing " + currentUser + "'s schedule \u2014 click a cell to cycle available / unavailable / unset";
+      userLabel.textContent = currentUser + " beosztása \u2014 kattints egy mezőre a váltáshoz: elérhető / nem elérhető / nincs megadva";
       legend.style.display = "flex";
-      renderGrid(currentData, true);
+      renderGrids(currentData, true);
     } else {
       whoBar.style.display = "flex";
       userLabel.style.display = "none";
