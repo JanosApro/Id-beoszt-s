@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Team Availability</title>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --border: #ddd9d0;
+    --border-strong: #b8b3a6;
+    --text-primary: #2c2c2a;
+    --text-secondary: #6b6a63;
+    --text-muted: #9a978c;
+    --success: #0f6e56;
+    --success-bg: #e1f5ee;
+    --danger: #993c1d;
+    --danger-bg: #faece7;
+    --accent: #185fa5;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem 4rem;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 1.5rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .tabbar { display: flex; gap: 8px; margin-bottom: 1.25rem; }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+  button:hover { background: #f0efe9; }
+  button.active { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+  .tabbar button { flex: 1; }
+  input[type=text] {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    flex: 1;
+  }
+  .who-bar { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .user-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 0.75rem; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 0.75rem; }
+  .legend i { font-style: normal; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--border); text-align: center; font-size: 12px; }
+  th { color: var(--text-secondary); font-weight: 500; padding: 4px 2px; }
+  td.hour-label { color: var(--text-secondary); text-align: right; padding: 2px 8px 2px 0; border: none; white-space: nowrap; }
+  td.cell { height: 28px; width: 13%; cursor: pointer; user-select: none; }
+  td.cell.readonly { cursor: default; }
+  td.cell.unset { color: var(--text-muted); background: transparent; }
+  td.cell.available { color: var(--success); background: var(--success-bg); }
+  td.cell.unavailable { color: var(--danger); background: var(--danger-bg); }
+  .member-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; }
+  .member-pills button { font-size: 13px; }
+  .empty { font-size: 13px; color: var(--text-muted); }
+  .storage-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+    padding-top: 1rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Team availability</h1>
+  <p class="sub">Mark your available hours. Everyone shares this list on this device/browser.</p>
+
+  <div class="tabbar">
+    <button id="tab-mine" class="active">My schedule</button>
+    <button id="tab-team">Team view</button>
+  </div>
+
+  <div class="card">
+    <div class="who-bar" id="who-bar">
+      <input type="text" id="name-input" list="member-list" placeholder="Enter your name" />
+      <datalist id="member-list"></datalist>
+      <button id="load-btn">Open</button>
+    </div>
+
+    <div class="user-label" id="user-label" style="display:none;"></div>
+    <div class="legend" id="legend" style="display:none;">
+      <span><i>&check;</i> available</span>
+      <span><i>&times;</i> unavailable</span>
+      <span>&mdash; unset</span>
+    </div>
+
+    <div class="member-pills" id="member-pills" style="display:none;"></div>
+    <div id="grid-wrap"></div>
+  </div>
+
+  <p class="storage-note">
+    Data is stored in this browser's local storage, so it's shared for everyone using this exact
+    browser/computer, but it will not sync to other people's devices automatically. To keep a team
+    in sync across separate computers, host this file somewhere everyone opens on the same shared
+    kiosk/computer, or ask me to wire it up to a small free backend (e.g. Firebase) for real
+    cross-device syncing.
+  </p>
+</div>
+
+<script>
+(function () {
+  var DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  var HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+  var STATES = ["unset", "available", "unavailable"];
+
+  var mode = "mine";
+  var currentUser = null;
+  var currentData = {};
+  var teamMembers = [];
+  var viewingMember = null;
+
+  var tabMine = document.getElementById("tab-mine");
+  var tabTeam = document.getElementById("tab-team");
+  var whoBar = document.getElementById("who-bar");
+  var nameInput = document.getElementById("name-input");
+  var memberList = document.getElementById("member-list");
+  var loadBtn = document.getElementById("load-btn");
+  var userLabel = document.getElementById("user-label");
+  var legend = document.getElementById("legend");
+  var memberPillsEl = document.getElementById("member-pills");
+  var gridWrap = document.getElementById("grid-wrap");
+
+  function cellKey(day, hour) { return day + "-" + hour; }
+
+  function getMembers() {
+    try { return JSON.parse(localStorage.getItem("team:members") || "[]"); }
+    catch (e) { return []; }
+  }
+  function saveMembers(list) {
+    localStorage.setItem("team:members", JSON.stringify(list));
+  }
+  function getUserData(name) {
+    try { return JSON.parse(localStorage.getItem("avail:" + name) || "{}"); }
+    catch (e) { return {}; }
+  }
+  function saveUserData(name, data) {
+    localStorage.setItem("avail:" + name, JSON.stringify(data));
+  }
+
+  function refreshMemberDatalist() {
+    teamMembers = getMembers();
+    memberList.innerHTML = "";
+    teamMembers.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m;
+      memberList.appendChild(opt);
+    });
+  }
+
+  function renderGrid(data, editable) {
+    var html = "<table><tr><th></th>";
+    DAYS.forEach(function (d) { html += "<th>" + d + "</th>"; });
+    html += "</tr>";
+    HOURS.forEach(function (h) {
+      html += "<tr><td class='hour-label'>" + h + ":00</td>";
+      DAYS.forEach(function (d) {
+        var key = cellKey(d, h);
+        var state = data[key] || 0;
+        var cls = STATES[state];
+        var content = state === 1 ? "&check;" : state === 2 ? "&times;" : "&mdash;";
+        html += "<td class='cell " + cls + (editable ? "" : " readonly") + "' data-day='" + d + "' data-hour='" + h + "'>" + content + "</td>";
+      });
+      html += "</tr>";
+    });
+    html += "</table>";
+    gridWrap.innerHTML = html;
+
+    if (editable) {
+      var cells = gridWrap.querySelectorAll("td.cell");
+      cells.forEach(function (cell) {
+        cell.addEventListener("click", function () {
+          var day = cell.getAttribute("data-day");
+          var hour = cell.getAttribute("data-hour");
+          var key = cellKey(day, hour);
+          var state = currentData[key] || 0;
+          state = (state + 1) % 3;
+          if (state === 0) delete currentData[key]; else currentData[key] = state;
+          saveUserData(currentUser, currentData);
+          renderGrid(currentData, true);
+        });
+      });
+    }
+  }
+
+  function renderMemberPills() {
+    memberPillsEl.innerHTML = "";
+    teamMembers = getMembers();
+    if (teamMembers.length === 0) {
+      memberPillsEl.innerHTML = "<p class='empty'>No team members yet. Ask everyone to open \"My schedule\" and enter their name.</p>";
+      gridWrap.innerHTML = "";
+      return;
+    }
+    teamMembers.forEach(function (name) {
+      var btn = document.createElement("button");
+      btn.textContent = name;
+      if (name === viewingMember) btn.classList.add("active");
+      btn.addEventListener("click", function () {
+        viewingMember = name;
+        renderMemberPills();
+        renderGrid(getUserData(name), false);
+      });
+      memberPillsEl.appendChild(btn);
+    });
+    if (!viewingMember || teamMembers.indexOf(viewingMember) === -1) {
+      viewingMember = teamMembers[0];
+    }
+    renderGrid(getUserData(viewingMember), false);
+  }
+
+  function showMineView() {
+    mode = "mine";
+    tabMine.classList.add("active");
+    tabTeam.classList.remove("active");
+    memberPillsEl.style.display = "none";
+
+    if (currentUser) {
+      whoBar.style.display = "none";
+      userLabel.style.display = "block";
+      userLabel.textContent = "Editing " + currentUser + "'s schedule \u2014 click a cell to cycle available / unavailable / unset";
+      legend.style.display = "flex";
+      renderGrid(currentData, true);
+    } else {
+      whoBar.style.display = "flex";
+      userLabel.style.display = "none";
+      legend.style.display = "none";
+      gridWrap.innerHTML = "";
+    }
+  }
+
+  function showTeamView() {
+    mode = "team";
+    tabTeam.classList.add("active");
+    tabMine.classList.remove("active");
+    whoBar.style.display = "none";
+    userLabel.style.display = "none";
+    legend.style.display = "flex";
+    memberPillsEl.style.display = "flex";
+    renderMemberPills();
+  }
+
+  loadBtn.addEventListener("click", function () {
+    var name = nameInput.value.trim();
+    if (!name) return;
+    currentUser = name;
+    var members = getMembers();
+    if (members.indexOf(name) === -1) {
+      members.push(name);
+      saveMembers(members);
+    }
+    currentData = getUserData(name);
+    showMineView();
+  });
+
+  nameInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") loadBtn.click();
+  });
+
+  tabMine.addEventListener("click", showMineView);
+  tabTeam.addEventListener("click", showTeamView);
+
+  refreshMemberDatalist();
+  showMineView();
+})();
+</script>
+</body>
+</html>
